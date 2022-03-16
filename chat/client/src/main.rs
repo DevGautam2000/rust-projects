@@ -2,45 +2,50 @@ use std::io::{self, ErrorKind, Read, Write};
 use std::net::TcpStream;
 use std::sync::mpsc::{self, TryRecvError};
 use std::thread;
-use std::time::Duration;
 
-const LOCAL: &str = "127.0.0.1:6000";
+const PORT: &str = "127.0.0.1:6000";
 const MSG_SIZE: usize = 32;
+fn sleep() {
+    thread::sleep(::std::time::Duration::from_millis(100));
+}
 
 fn main() {
-    let mut client = TcpStream::connect(LOCAL).expect("Stream failed to connect");
-    client.set_nonblocking(true).expect("failed to initiate non-blocking");
 
-    let (transmitter, receiver) = mpsc::channel::<String>();
+    //try catch is handles with panics!
+    let mut client = TcpStream::connect(PORT).expect("Stream failed to connect"); //create a connection
+    client.set_nonblocking(true).expect("failed to initiate non-blocking"); //intiate net blocking
 
-    thread::spawn(move || loop {
-        let mut buff = vec![0; MSG_SIZE];
+    let (transmitter, receiver) = mpsc::channel::<String>(); //structure bind the channel varaibles
+
+    thread::spawn(move || loop { //spawn the thread and create a indefinite loop
+        let mut buff = vec![0; MSG_SIZE]; //initiate the buffer
         match client.read_exact(&mut buff) {
-            Ok(_) => {
-                let msg = buff.into_iter().take_while(|&x| x != 0).collect::<Vec<_>>();
-                println!("message recv {:?}", msg);
+            Ok(_) => { //if status ok
+                let msg = buff.into_iter().take_while(|&x| x != 0).collect::<Vec<_>>(); //keep reading from buffer
+                println!("message recv {:?}", msg); //print message 
             },
-            Err(ref err) if err.kind() == ErrorKind::WouldBlock => (),
-            Err(_) => {
+            Err(ref err) if err.kind() == ErrorKind::WouldBlock => (), //if erroe of kind WouldBlock
+            Err(_) => { //catch
                 println!("connection with server was severed");
-                break;
+                break; //break if error from loop
             }
         }
 
-        match receiver.try_recv() {
-            Ok(msg) => {
-                let mut buff = msg.clone().into_bytes();
-                buff.resize(MSG_SIZE, 0);
-                client.write_all(&buff).expect("writing to socket failed");
+        match receiver.try_recv() { //try receive
+            Ok(msg) => { // if status ok
+                let mut buff = msg.clone().into_bytes(); //cline the message into bytes
+                buff.resize(MSG_SIZE, 0); //resize the buffer
+                client.write_all(&buff).expect("writing to socket failed"); //write the message to the socket
                 println!("message sent {:?}", msg);
             }, 
-            Err(TryRecvError::Empty) => (),
-            Err(TryRecvError::Disconnected) => break
+            Err(TryRecvError::Empty) => (), //if error empty or
+            Err(TryRecvError::Disconnected) => break //if error disconnected break
         }
 
-        thread::sleep(Duration::from_millis(100));
+        sleep(); // make the thread sleep for 100ms as in a loop
     });
 
+    //read message from user
     println!("Write a Message:");
     loop {
         let mut buff = String::new();
@@ -48,6 +53,4 @@ fn main() {
         let msg = buff.trim().to_string();
         if msg == ":quit" || transmitter.send(msg).is_err() {break}
     }
-    println!("bye bye!");
-
 }
